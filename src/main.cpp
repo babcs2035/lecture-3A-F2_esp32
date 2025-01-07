@@ -6,6 +6,9 @@
 #include <ESP8266WiFi.h>
 #endif
 #include <Firebase_ESP_Client.h>
+#include <time.h>
+#include <stdio.h>
+#include <string.h>
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -13,7 +16,7 @@
 #include "addons/RTDBHelper.h"
 
 // Insert your network credentials
-#define WIFI_SSID "babcs-iPhone"
+#define WIFI_SSID "KOSEI-THINKBOOK"
 #define WIFI_PASSWORD "password"
 
 // Insert Firebase project API Key
@@ -21,6 +24,9 @@
 
 // Insert RTDB URLefine the RTDB URL */
 #define DATABASE_URL "https://bdm-34-default-rtdb.firebaseio.com/"
+
+#define DEVICE_ID "kero"
+#define AD_PIN 33
 
 // Define Firebase Data object
 FirebaseData fbdo;
@@ -31,6 +37,49 @@ FirebaseConfig config;
 unsigned long sendDataPrevMillis = 0;
 int count = 0;
 bool signupOK = false;
+
+// Function to get current timestamp in the required format
+void getCurrentTimestamp(char *buffer, size_t bufferSize)
+{
+  time_t now = time(NULL);
+  struct tm *timeinfo = localtime(&now);
+  strftime(buffer, bufferSize, "%Y%m%d-%H%M%S", timeinfo);
+}
+
+// Function to add data to Firebase
+void addData(float ampereValue, bool statusValue)
+{
+  char timestamp[20];
+  getCurrentTimestamp(timestamp, sizeof(timestamp));
+
+  // Construct the paths for ampere and status
+  char amperePath[100];
+  char statusPath[100];
+  snprintf(amperePath, sizeof(amperePath), "devices/%s/ampere/%s", DEVICE_ID, timestamp);
+  snprintf(statusPath, sizeof(statusPath), "devices/%s/status/%s", DEVICE_ID, timestamp);
+
+  // Add ampere value
+  if (Firebase.RTDB.setFloat(&fbdo, amperePath, ampereValue))
+  {
+    Serial.println("Ampere value added successfully");
+  }
+  else
+  {
+    Serial.println("Failed to add ampere value");
+    Serial.println(fbdo.errorReason());
+  }
+
+  // Add status value
+  if (Firebase.RTDB.setBool(&fbdo, statusPath, statusValue))
+  {
+    Serial.println("Status value added successfully");
+  }
+  else
+  {
+    Serial.println("Failed to add status value");
+    Serial.println(fbdo.errorReason());
+  }
+}
 
 void setup()
 {
@@ -69,6 +118,16 @@ void setup()
 
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
+
+  // Initialize time with JST (UTC+9)
+  configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+
+  // Wait for time to be set
+  while (!time(nullptr))
+  {
+    Serial.print(".");
+    delay(1000);
+  }
 }
 
 void loop()
@@ -76,31 +135,9 @@ void loop()
   if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
   {
     sendDataPrevMillis = millis();
-    // Write an Int number on the database path test/int
-    if (Firebase.RTDB.setInt(&fbdo, "test/int", count))
-    {
-      Serial.println("PASSED");
-      Serial.println("PATH: " + fbdo.dataPath());
-      Serial.println("TYPE: " + fbdo.dataType());
-    }
-    else
-    {
-      Serial.println("FAILED");
-      Serial.println("REASON: " + fbdo.errorReason());
-    }
-    count++;
 
-    // Write an Float number on the database path test/float
-    if (Firebase.RTDB.setFloat(&fbdo, "test/float", 0.01 + random(0, 100)))
-    {
-      Serial.println("PASSED");
-      Serial.println("PATH: " + fbdo.dataPath());
-      Serial.println("TYPE: " + fbdo.dataType());
-    }
-    else
-    {
-      Serial.println("FAILED");
-      Serial.println("REASON: " + fbdo.errorReason());
-    }
+    uint16_t analog_adc = analogRead(AD_PIN);
+    uint32_t analog_mv = analogReadMilliVolts(AD_PIN);
+    addData(analog_mv, true);
   }
 }
