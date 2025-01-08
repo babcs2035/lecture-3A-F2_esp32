@@ -107,7 +107,7 @@ void setup()
 
 void loop()
 {
-  if (Firebase.ready() && firebaseReadyFlag && millis() - sendDataPrevT > 15000)
+  if (Firebase.ready() && firebaseReadyFlag && millis() - sendDataPrevT > 5000)
   {
     sendDataPrevT = millis();
 
