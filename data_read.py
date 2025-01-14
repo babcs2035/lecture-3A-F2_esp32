@@ -7,19 +7,19 @@ import subprocess
 import re
 import numpy as np
 
-def get_power_details():
+def get_current_details():
     try:
-        result = subprocess.run(['ioreg', '-l'], capture_output=True, text=True)
+        command = 'ioreg -l | grep "AdapterDetails" | sed -e \'s/[ \\|]//g\''
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
         output = result.stdout
 
-        match = re.search(r'"PowerOutDetails"=\((.*?)\)', output)
-        if match:
-            details = match.group(1)
-            pd_power_match = re.search(r'"PDPowermW"=(\d+)', details)
-            if pd_power_match:
-                pd_power = int(pd_power_match.group(1))
-                return pd_power
-        return np.nan
+        current_match = re.search(r'"Current"=(\d+)', output)
+        if current_match:
+            current_value = current_match.group(1)
+            print(current_value)
+            return current_value
+        else:
+            return np.nan
     except Exception as e:
         print(f"Error: {e}")
         return np.nan
@@ -38,15 +38,15 @@ def read_serial(port, baudrate, csv_filename):
                 # シリアルポートからデータを読み取る
                 myData = mySP.readline().decode("utf-8").strip()
 
-                # pd_powerを取得
-                pd_power = get_power_details()
+                # current_valueを取得
+                current_value = get_current_details()
 
                 # データをCSVファイルに書き込む
                 if myData == "start" or myData == "end" or myData == "reset":
                     print(f"esp32 {myData}\n> ", end="")
                 else:
                     data_list = myData.split(",")
-                    data_list.append(pd_power)
+                    data_list.append(current_value)
                     writer.writerow(data_list)
                     file.flush()
     except Exception as e:
@@ -92,5 +92,4 @@ def main():
             break
 
 if __name__ == "__main__":
-    get_power_details()
-    #main()
+    main()
