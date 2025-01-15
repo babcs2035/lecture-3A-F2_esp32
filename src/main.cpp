@@ -30,18 +30,28 @@ void addData(float ampValue)
   char timestamp[20];
   getCurrentTimestamp(timestamp, sizeof(timestamp));
 
+  // Load device id
+  if (!Firebase.RTDB.getString(&fbdo, "config/deviceId"))
+  {
+    Serial.println("Failed to get device id");
+    Serial.println(fbdo.errorReason());
+    return;
+  }
+  char deviceId[100];
+  strcpy(deviceId, fbdo.to<const char *>());
+
   // Construct the paths for ampere and status
   char ampPath[100];
-  snprintf(ampPath, sizeof(ampPath), "devices/%s/amp/%s", DEVICE_ID, timestamp);
+  snprintf(ampPath, sizeof(ampPath), "devices/%s/amp/%s", deviceId, timestamp);
 
   // Add ampere value
   if (Firebase.RTDB.setFloat(&fbdo, ampPath, ampValue))
   {
-    Serial.printf("Amp value added successfully: %f\n", ampValue);
+    Serial.printf("Data added successfully (deviceId : %s, ampValue : %f)\n", deviceId, ampValue);
   }
   else
   {
-    Serial.println("Failed to add amp value");
+    Serial.println("Failed to add data");
     Serial.println(fbdo.errorReason());
   }
 }
@@ -52,7 +62,6 @@ void setup()
   pinMode(AD_PIN, INPUT);
   analogSetPinAttenuation(AD_PIN, ADC_11db);
   Serial.println("\n--------------------------------\n");
-  Serial.printf("Device: %s\n", DEVICE_ID);
   Serial.printf("AD_PIN: %d\n", AD_PIN);
   Serial.println("");
 
@@ -86,11 +95,7 @@ void setup()
 
   // Initialize time with JST (UTC+9)
   configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-  while (!time(nullptr))
-  {
-    Serial.print(".");
-    delay(1000);
-  }
+  delay(5000);
 
   collectedDataCnt = 0;
   mv_max = 0;
@@ -110,7 +115,7 @@ void loop()
     mv_min = analog_mv;
   }
 
-  if (collectedDataCnt % 1000 == 0)
+  if (collectedDataCnt >= 1000)
   {
     int amplitude = (mv_max - mv_min) / 2;
     // Serial.printf("%d,%4d,%4d,%4d\n", n, mv_max, mv_min, amplitude);
@@ -119,6 +124,7 @@ void loop()
       addData(amplitude);
     }
 
+    collectedDataCnt = 0;
     mv_max = 0;
     mv_min = 100000;
   }
