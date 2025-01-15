@@ -13,8 +13,8 @@ FirebaseAuth auth;
 FirebaseConfig config;
 FirebaseData fbdo;
 
-unsigned long sendDataPrevT = 0;
 bool firebaseReadyFlag = false;
+int collectedDataCnt, mv_max, mv_min;
 
 // Function to get current timestamp in the required format
 void getCurrentTimestamp(char *buffer, size_t bufferSize)
@@ -25,36 +25,23 @@ void getCurrentTimestamp(char *buffer, size_t bufferSize)
 }
 
 // Add data to Firebase
-void addData(float ampereValue, bool statusValue)
+void addData(float ampValue)
 {
   char timestamp[20];
   getCurrentTimestamp(timestamp, sizeof(timestamp));
 
   // Construct the paths for ampere and status
-  char amperePath[100];
-  char statusPath[100];
-  snprintf(amperePath, sizeof(amperePath), "devices/%s/ampere/%s", DEVICE_ID, timestamp);
-  snprintf(statusPath, sizeof(statusPath), "devices/%s/status/%s", DEVICE_ID, timestamp);
+  char ampPath[100];
+  snprintf(ampPath, sizeof(ampPath), "devices/%s/amp/%s", DEVICE_ID, timestamp);
 
   // Add ampere value
-  if (Firebase.RTDB.setFloat(&fbdo, amperePath, ampereValue))
+  if (Firebase.RTDB.setFloat(&fbdo, ampPath, ampValue))
   {
-    Serial.printf("Ampere value added successfully: %f\n", ampereValue);
+    Serial.printf("Amp value added successfully: %f\n", ampValue);
   }
   else
   {
-    Serial.println("Failed to add ampere value");
-    Serial.println(fbdo.errorReason());
-  }
-
-  // Add status value
-  if (Firebase.RTDB.setBool(&fbdo, statusPath, statusValue))
-  {
-    Serial.printf("Status value added successfully: %d\n", statusValue);
-  }
-  else
-  {
-    Serial.println("Failed to add status value");
+    Serial.println("Failed to add amp value");
     Serial.println(fbdo.errorReason());
   }
 }
@@ -62,6 +49,8 @@ void addData(float ampereValue, bool statusValue)
 void setup()
 {
   Serial.begin(115200);
+  pinMode(AD_PIN, INPUT);
+  analogSetPinAttenuation(AD_PIN, ADC_11db);
   Serial.println("\n--------------------------------\n");
   Serial.printf("Device: %s\n", DEVICE_ID);
   Serial.printf("AD_PIN: %d\n", AD_PIN);
@@ -102,17 +91,37 @@ void setup()
     Serial.print(".");
     delay(1000);
   }
-  sendDataPrevT = millis();
+
+  collectedDataCnt = 0;
+  mv_max = 0;
+  mv_min = 100000;
 }
 
 void loop()
 {
-  if (Firebase.ready() && firebaseReadyFlag && millis() - sendDataPrevT > 5000)
+  collectedDataCnt += 1;
+  uint32_t analog_mv = analogReadMilliVolts(AD_PIN);
+  if (mv_max < analog_mv)
   {
-    sendDataPrevT = millis();
-
-    uint16_t analog_adc = analogRead(AD_PIN);
-    uint32_t analog_mv = analogReadMilliVolts(AD_PIN);
-    addData(analog_mv, true);
+    mv_max = analog_mv;
   }
+  if (mv_min > analog_mv)
+  {
+    mv_min = analog_mv;
+  }
+
+  if (collectedDataCnt % 1000 == 0)
+  {
+    int amplitude = (mv_max - mv_min) / 2;
+    // Serial.printf("%d,%4d,%4d,%4d\n", n, mv_max, mv_min, amplitude);
+    if (Firebase.ready() && firebaseReadyFlag)
+    {
+      addData(amplitude);
+    }
+
+    mv_max = 0;
+    mv_min = 100000;
+  }
+
+  delay(1);
 }
